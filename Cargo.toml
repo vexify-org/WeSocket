@@ -1,0 +1,15 @@
+[package]
+name = "wesocket"
+version = "0.1.0"
+edition = "2021"
+description = "A socket.io-compatible realtime engine in Rust — lighter, faster, zero dependencies. Powered by Vexify."
+license = "Apache-2.0"
+keywords = ["websocket", "socket.io", "realtime", "websocket-server", "comet"]
+categories = ["network-programming", "asynchronous"]
+rust-version = "1.70"
+
+[dependencies]
+
+[lib]
+name = "wesocket"
+path = "src/lib.rs"
