@@ -72,9 +72,10 @@ fn echo_with_ack_roundtrip() {
 }
 
 #[test]
-fn binary_roundtrip_via_base64() {
+fn binary_roundtrip_real_attachments() {
     let (io, addr) = spawn_server(|io| {
         io.on("connection", |socket, _| {
+            // Echo the exact bytes back so we can assert identity.
             socket.on("b", |sock, args| {
                 if let Some(b) = args.first() {
                     sock.emit("b reply", b.clone());
@@ -91,24 +92,27 @@ fn binary_roundtrip_via_base64() {
         std::thread::sleep(Duration::from_millis(10));
     }
 
-    let got = Arc::new(std::sync::Mutex::new(None));
+    let got: Arc<std::sync::Mutex<Option<Json>>> = Arc::new(std::sync::Mutex::new(None));
     let g = got.clone();
     client.on("b reply", move |_c, args| {
         *g.lock().unwrap() = args.first().cloned();
     });
 
-    let payload: Vec<u8> = b"\x00\x01binary\xff".to_vec();
+    // Non-UTF8, arbitrary bytes: only round-trips intact as a real binary
+    // attachment (not base64 text).
+    let payload: Vec<u8> = vec![0x00, 0xFF, 0x10, 0x02, 0b1010_0101, 0x7F];
     client.emit("b", Json::Bytes(payload.clone())).unwrap();
 
-    let mut seen = false;
-    for _ in 0..100 {
+    for _ in 0..200 {
         if got.lock().unwrap().is_some() {
-            seen = true;
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert!(seen, "no binary reply");
+    match got.lock().unwrap().take() {
+        Some(Json::Bytes(b)) => assert_eq!(b, payload, "binary payload did not round-trip intact"),
+        other => panic!("expected Json::Bytes back, got {:?}", other),
+    }
     let _ = io;
 }
 

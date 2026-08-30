@@ -150,9 +150,19 @@ impl Client {
     }
 
     fn send_packet(&self, p: &protocol::Packet) -> io::Result<()> {
-        let text = protocol::encode_message(p);
+        let mut packet = p.clone();
+        if (packet.type_ == PacketType::Event || packet.type_ == PacketType::Ack)
+            && contains_bytes(&packet.data)
+        {
+            // Promote to a binary packet: placeholder JSON + binary WS frames.
+            protocol::encode_binary(&mut packet);
+        }
+        let text = protocol::encode_message(&packet);
         let mut writer = self.inner.writer.lock().unwrap();
-        websocket::write_frame(&mut *writer, websocket::OP_TEXT, text.as_bytes(), true)?;
+        websocket::write_frame(&mut *writer, websocket::OP_TEXT, text.as_bytes(), false)?;
+        for b in &packet.binary {
+            websocket::write_frame(&mut *writer, websocket::OP_BINARY, b, false)?;
+        }
         writer.flush()
     }
 
@@ -385,6 +395,16 @@ fn dispatch(inner: &Arc<ClientInner>, p: &protocol::Packet) {
             }
         }
         _ => {}
+    }
+}
+
+/// Return true when `v` contains any binary payload anywhere in its tree.
+fn contains_bytes(v: &Json) -> bool {
+    match v {
+        Json::Bytes(_) => true,
+        Json::Array(items) => items.iter().any(contains_bytes),
+        Json::Object(map) => map.values().any(contains_bytes),
+        _ => false,
     }
 }
 
